@@ -108,9 +108,12 @@ play <- function (player1, player2, max_number_of_rounds = 80000)
 }
 
 # define decks
+
+# this is the only piece of the code where it's adviasable to still "play with"
 setup <- function (joker_count = 1L, 
 					deck_count = 1L, 
-					remove_balance = 0L,
+					imbalance_count = 0L, # Number of cards to remove
+					remove_balance = 0L,  # Do we remove the cards completely or give them to the other player?
 					max_number_of_rounds = 10000L) {
 	
 	deck_stats <- NULL
@@ -126,7 +129,7 @@ setup <- function (joker_count = 1L,
 
 		#deal
 		# remove balance: remove a random card at the end of the deck so we'll have a completely unbalanced two decks
-		player1 <- head (x,(length(x)/2) - remove_balance)
+		player1 <- head (x,(length(x)/2) - remove_balance * imbaqlance_count)
 		player2 <- tail (x,(length(x)/2))
 
 		
@@ -158,55 +161,6 @@ setup <- function (joker_count = 1L,
 }
 
 
-setup2 <- function (joker_count = 1L, 
-					deck_count = 1L, 
-					remove_balance = 0L,
-					max_number_of_rounds = 10000L) {
-	
-	deck_stats <- NULL
-	game_results <- NULL
-
-	v <- rep (1L:13L, times = 4 * deck_count)
-	z <- rep (14L, each = joker_count)
-
-	for (seed_id in 1:200){
-
-		set.seed (seed_id)
-		x <- sample (c(v,z))
-
-		#deal
-		# remove balance: remove a random card at the end of the deck so we'll have a completely unbalanced two decks
-		player1 <- head (x,(length(x)/2) - remove_balance)
-		player2 <- tail (x,(length(x)/2) + remove_balance)
-
-		
-		deck_stats_player_1 <- data.frame ("Min Player 1" = min(player1),
-									"Max Player 1" = max(player1) ,
-									"Mean Player 1" = mean (player1), 
-									"Median Player 1" = median (player1), 
-									"Size Player 1" = length (player1), 
-									"Seed" = seed_id
-								)
-
-		deck_stats_player_2 <- data.frame ("Min Player 2" = min(player2),
-										"Max Player 2" = max(player1) ,
-										"Mean Player 2" = mean (player2), 
-										"Median Player 2"= median (player2), 
-										"Size  Player 2" = length (player2)
-									)
-
-		# deck_stats <- rbind (deck_stats, deck_stats_player_1)
-		# deck_stats <- rbind (deck_stats, deck_stats_player_2)
-		deck_stats <- rbind (deck_stats, cbind (deck_stats_player_1, deck_stats_player_2))
-
-		#combining the round results with the previous rounds and the seed_id
-		game_results <- rbind(game_results, cbind (play (player1, player2, max_number_of_rounds), seed_id))
-	}
-
-	joined_stats <- merge (game_results, deck_stats, by.x = "seed_id", by.y = "Seed")
-	return (joined_stats)
-}
-
 
 # game_results
 
@@ -218,9 +172,9 @@ df_game <- NULL
 
 for (joker_count in 0L:3L) {
 	for (deck_count in 1L:2L) {
-		for (imbalance in (c(0, 1, 4, 5))) { #imblance is starting with uneven number of cards on both sides
+		for (imbalance in (c(0, 1, 4, 5, 10))) { #imblance is starting with uneven number of cards on both sides
 												#0, 1, 3, 5 didn't produce reasonable results
-			df_game <- rbind (df_game, cbind (setup (joker_count, deck_count, imbalance ,30000L), joker_count, deck_count, imbalance)) 
+			df_game <- rbind (df_game, cbind (setup (joker_count, deck_count, imbalance , 0 ,30000L), joker_count, deck_count, imbalance)) 
 		}
 	}
 }
@@ -235,7 +189,7 @@ for (joker_count in 0L:3L) {
 }
 
 
-
+#some tests on the code
 
 aggregate (.~Infinite.Game, df_game, FUN = max)
 
@@ -255,6 +209,17 @@ df_game %>%
 	group_by (total_cards = Size.Player.1 + Size..Player.2, Is_odd = (Size.Player.1 + Size..Player.2)%%2, Infinite.Game) %>%
 	summarize(max_length_of_game = max (Length.of.game)) %>% 
 	print (n = 40)
+
+#save as CSV
+#read as CSV
+
+
+write.csv (df_game, "df_game.csv", row.names = FALSE)
+
+
+df_game_csv = read.csv ("/Users/hilagalapo/Documents/Aurora!/df_game.csv", header = TRUE)
+
+
 
 
 df_game_csv %>%
@@ -284,6 +249,7 @@ df_summary = count (df_game_csv, is_odd = (Size.Player.1 + Size..Player.2)%%2,
 					total_cards = Size.Player.1 + Size..Player.2,
 					size_player_1 = Size.Player.1,
 					max_player_1 = df_game_csv$Max.Player.1,
+					joker_count,
 					imbalance,
 					winner = factor(ifelse (Infinite.Game ==  "Yes", "Infinite", ifelse (Player1.end.position > 0,  {"Player1"} ,{"Player2"}))))
 
@@ -291,13 +257,29 @@ dim (df_summary)
 names (df_summary)
 names (df_game_csv)
 
-df_summary
+# plots
 
-p <- ggplot (df_summary, aes (x = as.factor(is_odd), y = n, fill = winner )) + geom_bar(stat = "identity", width = .5, position = "dodge" ) + facet_wrap(~imbalance   , nrow =  2 ) + labs (x = "is odd", title = "Games by Imbalance" )
+ggplot (df_summary%>%filter(imbalance == 0), aes (x = as.factor(is_odd), y = n, fill = winner )) + geom_bar(stat = "identity", width = .5, position = "dodge" )  + labs (x = "is odd", title = "Count of games end position by Odd vs Even deck" )  + theme(axis.text=element_text(size=16),
+        axis.title=element_text(size=18,face="bold"), plot.title = element_text(size = 20), legend.text = element_text(size = 18), legend.title = element_text(size = 18))
+ggsave ("GameWon by Deck.png", plot = last_plot())
+
+
+
+
+
+ggplot (df_summary, aes (x = as.factor(is_odd), y = n, fill = winner )) + geom_bar(stat = "identity", width = .5, position = "dodge" ) + facet_wrap(~imbalance   , nrow =  2 ) + labs (x = "is odd", title = "Games by Imbalance" ) + theme(axis.text=element_text(size=16), axis.title=element_text(size=18,face="bold"), plot.title = element_text(size = 20), legend.text = element_text(size = 18), legend.title = element_text(size = 18))
+ggsave ("Games by Imbalance.png", plot = last_plot())
+
+ggplot (df_summary, aes (x = as.factor(is_odd), y = n, fill = winner )) + geom_bar(stat = "identity", width = .5, position = "dodge" ) + facet_wrap(~joker_count   , nrow =  2 ) + labs (x = "is odd", title = "Games by Joker Count" )
+ggsave ("Hist Joker Count.png", plot = last_plot ())
+
+ggplot (df_summary, aes (x = imbalance, y = n, fill = winner )) + geom_bar(stat = "identity", width = .5, position = "dodge" ) + facet_wrap(~joker_count   , nrow =  4 ) + labs (x = "imbalance", title = "Game count by Joker Count" )
 
 
 	
-ggplot (df_summary, aes (x = as.factor(is_odd), y = n, fill = winner )) + geom_bar(stat = "identity", width = .5, position = "dodge" ) + facet_wrap(~max_player_1, nrow =  2 ) + labs (x = "0 - Even deck, 1 - odd deck", y = "number of gaems", title = "winner by Max Card (player 1)")
+ggplot (df_summary, aes (x = as.factor(is_odd), y = n, fill = winner )) + geom_bar(stat = "identity", width = .5, position = "dodge" ) + facet_wrap(~max_player_1, nrow =  2 ) + labs (x = "0 - Even deck, 1 - odd deck", y = "number of gaems", title = "winner by Max Card (player 1)") + theme(axis.text=element_text(size=16), axis.title=element_text(size=18,face="bold"), plot.title = element_text(size = 20), legend.text = element_text(size = 18), legend.title = element_text(size = 18))
+
+ggsave ("Winner by max card.png", plot = last_plot())
 
 
 library (reshape2)
@@ -350,29 +332,31 @@ points (
 #puting it all together in one graph
 #this really does look good!
 
-(p <- ggplot (data = df_game) 
+(p <- ggplot (data = df_game_csv) 
 	+ geom_count (mapping = aes (x = Length.of.game, 
 					y = Size.Player.1+ Size..Player.2
 					, color = factor ((Size.Player.1+ Size..Player.2) %%2L)))
 	+ facet_wrap (~ Size.Player.1, nrow = 2)
-	+ labs (x = "Number of Rounds to complete game", y = "Number of cards in deck", color = "Is Even Deck", caption = "Number of games") 
+	+ labs (x = "Number of Rounds per game", y = "Total cards in deck", color = "Is Even Deck", caption = "Facet: Player 1's starting cards") 
+	+ theme(axis.text=element_text(size=8), axis.title=element_text(size=16,face="bold"), plot.title = element_text(size = 20), legend.text = element_text(size = 18), legend.title = element_text(size = 18))
 )
 
 ggsave ("GameLenByPlayer1.png", plot = last_plot())
 
 
-(q <- ggplot (data = df_game) 
+(q <- ggplot (data = df_game_csv) 
 	+ geom_count (mapping = aes (x = Length.of.game, 
 					y = imbalance
 					, color = factor ((Size.Player.1+ Size..Player.2) %%2L)))
 	+ facet_wrap (~ joker_count, nrow = 2)
-	+ labs (x = "Number of Rounds to complete game", y = "Imbalance", color = "0 - even deck, 1 = odd deck", caption = "Number of rounds by joker count") 
+	+ labs (x = "Number of Rounds to complete game", y = "Imbalance", color = "0 - even deck\n1 = odd deck", caption = "Number of rounds by joker count") 
+	+ theme(axis.text=element_text(size=8), axis.title=element_text(size=16,face="bold"), plot.title = element_text(size = 20), legend.text = element_text(size = 18), legend.title = element_text(size = 18))
 )
 
 ggsave ("GameLenByJokerCount.png", plot = last_plot())
 
 
-(t <- ggplot ( data = df_game %>%
+(t <- ggplot ( data = df_game_csv %>%
 		filter (Infinite.Game == "No") %>%
 		group_by (Size.Player.1, joker_count, Is_odd_deck = (Size.Player.1 + Size..Player.2)%%2) %>%
 		summarize (avg_length_of_game = mean (Length.of.game))
@@ -384,7 +368,7 @@ ggsave ("GameLenByJokerCount.png", plot = last_plot())
 
 ggsave ("AvgGameLength.png", plot = last_plot())
 
-(o <- ggplot (data = df_game) 
+(o <- ggplot (data = df_game_csv) 
 	+ geom_count (mapping = aes (x = Length.of.game, 
 					y = Size.Player.1+ Size..Player.2
 					, color = factor (joker_count)))
@@ -527,7 +511,7 @@ library (corrplot)
 
 
 
-ggsave ("Corrplot all games.png", plot = replayPlot (t))
+ggsave ("Corrplot all games.png", plot = replayPlot (p))
 
 
 library (corrplot)
@@ -614,7 +598,7 @@ summary (df_game)
 
 unique (df_game [18])
 
-df_game.finite <- filter (df_game, Infinite.Game == "No")
+df_game.finite <- filter (df_game_csv, Infinite.Game == "No")
 dim (df_game.finite)
 
 cor (df_game $ Size.Player.1, df_game $ Player1.end.position)
@@ -663,10 +647,10 @@ ggplot (df_game) +
 	theme_minimal() 
 
 
-pairs (df_game[2:14]  #
+pairs (df_game_csv[2:14, 16]  #
 	, main = "Corelation Matrix"
 	, pch = 21
-	, bg = c("red", "blue")[unclass(df_game$Infinite.Game)]
+	, bg = c("red", "blue")[unclass(df_game_csv$Infinite.Game)]
 	, upper.panel = NULL
 	)
 
@@ -675,12 +659,62 @@ ggplot (df_game, aes (Size.Player.1 , Player1.end.position ,Infinite.Game)) + ge
 
 #displaying the corelation in a designated ploting package
 
+library (corrplot())
+
+corrplot (cor(df_game_csv[, c(2:4, 6:14, 16)]), 
+		method = "circle", #disply the results in numbers, not in images
+		insig = "blank",
+		type = "upper", 		#only half the matrix (no repetitions!)
+		order = "AOE",
+		addCoef.col = 'black',
+		number.cex = 1.2,
+		diag = FALSE
+	)
 
 
-corrplot (cor(df_game[, c(2:14)]), 
-	method = "number", #disply the results in numbers, not in images
-	type = "upper"		#only half the matrix (no repetitions!)
-)
+myfun <- function (ff){
+	corrplot (ff, 
+		method = "circle", #disply the results in numbers, not in images
+		insig = "blank",
+		type = "upper", 		#only half the matrix (no repetitions!)
+		order = "AOE",
+		addCoef.col = 'black',
+		number.cex = 1.2,
+		diag = FALSE
+	)
+	recordPlot()
+	}
+
+
+
+ff <- cor(df_game_csv[, c(2:4, 6:14, 16)])
+myfun (ff)
+p <- myfun (ff)
+
+
+class (ff)
+class (p)
+ggsave (plot = replayPlot (p), filename = "Corrplot finite games.png", type = "cairo", dpi = 600)
+
+library (ggplot2)
+png (height = 1800, width = 1800, res = 72, pointsize = 25, type = "cairo", file = "corrplot finite games.png")
+png (height = 1800, width = 1800, res = 72, pointsize = 25,  file = "corrplot finite games.png")
+myplot <- corrplot (cor(df_game_csv[, c(2:4, 6:14, 16)]), 
+		method = "circle", #disply the results in numbers, not in images
+		insig = "blank",
+		type = "upper", 		#only half the matrix (no repetitions!)
+		order = "AOE",
+		addCoef.col = 'black',
+		number.cex = 1.2,
+		diag = FALSE
+	)
+print (myplot)
+dev.off()
+
+
+
+
+names (df_game.finite)
 
 library (correlation)
 
@@ -693,8 +727,5 @@ unique (df_game[15])
 df_game.agg <- cast (df_game, Size..Player.2 + Player2.end.position ~ Infinite.Game , sum)
 print (df_game.agg)
 
-write.csv (df_game, "df_game.csv", row.names = FALSE)
 
-
-df_game_csv = read.csv ("/Users/hilagalapo/Documents/Aurora!/df_game.csv", header = TRUE)
 
